@@ -3,10 +3,10 @@ import { THREE } from "../../System/Globals.js";
 
 const pluginName = "Particle effects";
 
-const clock = new THREE.Clock();
-const loader = new THREE.TextureLoader();
-const dummy = new THREE.Object3D();
 const emitterList = [];
+const dummy = new THREE.Object3D();
+const clock = new THREE.Clock();
+const loader = new THREE.TextureLoader().setPath(RPM.Common.Paths.PLUGINS + pluginName + "/textures/");
 
 const vertShader = `
 attribute float instanceAlpha;
@@ -146,6 +146,7 @@ function tokenize(text)
 		}
 		else if (text[i] == 't')
 		{
+			console.log(text, text[i], text[i + 1]);
 			if (text[++i] == 'a')
 			{
 				if (text[++i] == 'n')
@@ -155,6 +156,7 @@ function tokenize(text)
 			}
 			else
 			{
+				console.log(text, text[i - 1], text[i]);
 				expr.push({ token: Token.TIME, type: "val", value: null });
 				i--;
 			}
@@ -189,12 +191,13 @@ function tokenize(text)
 			var num = "";
 			while (num.search(/^-?\d*(\.\d*)?$/) === 0 && i < text.length)
 				num += text[i++].toString();
-			if (i < text.length)
+			if (num.search(/^-?\d*(\.\d*)?$/) !== 0)
 			{
 				num = num.slice(0, -1);
 				i--;
 			}
 			i--;
+			console.log(num);
 			if (num.length > 0)
 			{
 				if (num == '-')
@@ -228,6 +231,7 @@ function tokenize(text)
 		if (par < 0)
 			return null;
 	}
+	console.log(text, expr);
 	if (par === 0)
 		return buildTree(expr);
 	return null;
@@ -336,7 +340,7 @@ setInterval(function ()
 						const p = e.particles[j];
 						p.time += delta;
 						dummy.position.set(evaluate(e.px, p.time, p.rand), evaluate(e.py, p.time, p.rand), evaluate(e.pz, p.time, p.rand)).multiplyScalar(RPM.Datas.Systems.SQUARE_SIZE);
-						dummy.scale.set(1, 1, 1).multiplyScalar(size);
+						dummy.scale.set(1, 1, 1).multiplyScalar(evaluate(e.size, e.time, e.rand));
 						e.instanceAlpha[j] = evaluate(e.opacity, p.time, p.rand);
 						dummy.updateMatrix();
 						e.mesh.setMatrixAt(j, dummy.matrix);
@@ -363,34 +367,41 @@ RPM.Manager.Plugins.registerCommand(pluginName, "Start particle effect", (object
 {
 	RPM.Core.MapObject.search(object, (result) =>
 	{
-		const tex = loader.load(texture);
-		const maxParticles = rate * lifespan;
-		const geo = new THREE.PlaneGeometry(tex.image.width, tex.image.height);
-		const mat = new THREE.ShaderMaterial({ uniforms: { diffuseTexture: tex }});
-		const mesh = new THREE.InstancedMesh(geo, mat, maxParticles);
-		result.object.mesh.add(mesh);
-		position = position.split(";");
-		emitterList.push(
+		const tex = loader.load(texture, function (tex)
 		{
-			id: object,
-			emissionTime: 0,
-			nextEmission: 0,
-			maxParticles: maxParticles,
-			map: RPM.Scene.Map.current,
-			instanceAlpha: new Float32Array(maxParticles),
-			mesh: mesh,
-			particles: [],
-			blending: additiveBlending ? THREE.AdditiveBlending : THREE.NormalBlending,
-			rate: rate,
-			lifespan: lifespan,
-			px: tokenize(position[0]),
-			py: tokenize(position[1]),
-			pz: tokenize(position[2]),
-			size: tokenize(size),
-			opacity: tokenize(opacity)
+			const maxParticles = rate * lifespan;
+			const geo = new THREE.PlaneGeometry(tex.image.width, tex.image.height);
+			const mat = new THREE.ShaderMaterial({ uniforms: { diffuseTexture: tex }});
+			const mesh = new THREE.InstancedMesh(geo, mat, maxParticles);
+			if (!result.object.mesh)
+			{
+				result.object.mesh = new THREE.Mesh();
+				RPM.Scene.Map.current.scene.add(result.object.mesh);
+			}
+			result.object.mesh.add(mesh);
+			position = position.split(";");
+			emitterList.push(
+			{
+				id: object,
+				emissionTime: 0,
+				nextEmission: 0,
+				maxParticles: maxParticles,
+				map: RPM.Scene.Map.current,
+				instanceAlpha: new Float32Array(maxParticles),
+				mesh: mesh,
+				particles: [],
+				blending: additiveBlending ? THREE.AdditiveBlending : THREE.NormalBlending,
+				rate: rate,
+				lifespan: lifespan,
+				px: tokenize(position[0]),
+				py: tokenize(position[1]),
+				pz: tokenize(position[2]),
+				size: tokenize(size),
+				opacity: tokenize(opacity)
+			});
+			console.log(emitterList[emitterList.length - 1]);
 		});
 	}, RPM.Core.ReactionInterpreter.currentObject);
-	console.log(opacity, tokenize(opacity));
 });
 
 RPM.Manager.Plugins.registerCommand(pluginName, "End particle effect", (object, smooth) =>
