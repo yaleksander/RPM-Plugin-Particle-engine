@@ -11,27 +11,28 @@ const loader = new THREE.TextureLoader().setPath(RPM.Common.Paths.PLUGINS + plug
 const vertShader = `
 attribute float instanceAlpha;
 
-varying float alpha;
+varying float vAlpha;
 varying vec2 vUV;
 
 void main()
 {
-	//gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-	gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+	gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
 	vUV = vec3(uv, 1).xy;
-	alpha = instanceAlpha;
+	vAlpha = instanceAlpha;
 }`;
 
 const fragShader = `
 uniform sampler2D diffuseTexture;
 
-varying float alpha;
+varying float vAlpha;
 varying vec2 vUV;
 
 void main()
 {
 	vec4 tex = texture2D(diffuseTexture, vec2(vUV.x, vUV.y));
-	tex.a = alpha;
+	if (tex.a < 0.5)
+		discard;
+	tex.a = vAlpha;
 	gl_FragColor = tex;
 }`;
 
@@ -146,7 +147,6 @@ function tokenize(text)
 		}
 		else if (text[i] == 't')
 		{
-			console.log(text, text[i], text[i + 1]);
 			if (text[++i] == 'a')
 			{
 				if (text[++i] == 'n')
@@ -156,7 +156,6 @@ function tokenize(text)
 			}
 			else
 			{
-				console.log(text, text[i - 1], text[i]);
 				expr.push({ token: Token.TIME, type: "val", value: null });
 				i--;
 			}
@@ -197,7 +196,6 @@ function tokenize(text)
 				i--;
 			}
 			i--;
-			console.log(num);
 			if (num.length > 0)
 			{
 				if (num == '-')
@@ -231,7 +229,6 @@ function tokenize(text)
 		if (par < 0)
 			return null;
 	}
-	console.log(text, expr);
 	if (par === 0)
 		return buildTree(expr);
 	return null;
@@ -247,14 +244,24 @@ function buildTree(expr)
 		if (expr[i].token === Token.OPEN)
 		{
 			var nested = [];
-			var j = 0;
-			while (expr[++j + i].token !== Token.CLOSE)
+			var j, par = 1;
+			for (j = 1; par !== 0 && i + j < expr.length; j++)
+			{
 				nested.push(expr[i + j]);
+				if (expr[i + j].token === Token.OPEN)
+					par++;
+				else if (expr[i + j].token === Token.CLOSE)
+					par--;
+			}
+			if (par !== 0)
+				return null;
+			nested.pop();
 			var node = buildTree(nested);
+			console.log(nested, node);
 			if (!node)
 				return null;
 			tree.push(node);
-			i += j;
+			i += j - 1;
 		}
 		else
 			tree.push(expr[i]);
@@ -338,12 +345,19 @@ setInterval(function ()
 					if (j < e.particles.length)
 					{
 						const p = e.particles[j];
-						p.time += delta;
-						dummy.position.set(evaluate(e.px, p.time, p.rand), evaluate(e.py, p.time, p.rand), evaluate(e.pz, p.time, p.rand)).multiplyScalar(RPM.Datas.Systems.SQUARE_SIZE);
-						dummy.scale.set(1, 1, 1).multiplyScalar(evaluate(e.size, e.time, e.rand));
-						e.instanceAlpha[j] = evaluate(e.opacity, p.time, p.rand);
-						dummy.updateMatrix();
-						e.mesh.setMatrixAt(j, dummy.matrix);
+						if (p.time > e.lifespan)
+							e.particles.splice(j--, 1);
+						else
+						{
+							p.time += delta;
+							dummy.position.set(evaluate(e.px, p.time, p.rand), evaluate(e.py, p.time, p.rand), evaluate(e.pz, p.time, p.rand));
+							dummy.position.multiplyScalar(RPM.Datas.Systems.SQUARE_SIZE);
+							dummy.scale.set(1, 1, 1).multiplyScalar(evaluate(e.size, p.time, p.rand));
+							e.instanceAlpha[j] = evaluate(e.opacity, p.time, p.rand);
+							dummy.updateMatrix();
+							console.log(j, evaluate(e.py, p.time, p.rand), dummy.clone());
+							e.mesh.setMatrixAt(j, dummy.matrix);
+						}
 					}
 					else
 					{
@@ -371,7 +385,8 @@ RPM.Manager.Plugins.registerCommand(pluginName, "Start particle effect", (object
 		{
 			const maxParticles = rate * lifespan;
 			const geo = new THREE.PlaneGeometry(tex.image.width, tex.image.height);
-			const mat = new THREE.ShaderMaterial({ uniforms: { diffuseTexture: tex }});
+			const mat = new THREE.ShaderMaterial({ vertexShader: vertShader, fragmentShader: fragShader, transparent: true, uniforms: { diffuseTexture: { value: tex } }});
+			//const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
 			const mesh = new THREE.InstancedMesh(geo, mat, maxParticles);
 			if (!result.object.mesh)
 			{
@@ -379,6 +394,7 @@ RPM.Manager.Plugins.registerCommand(pluginName, "Start particle effect", (object
 				RPM.Scene.Map.current.scene.add(result.object.mesh);
 			}
 			result.object.mesh.add(mesh);
+			console.log(mesh);
 			position = position.split(";");
 			emitterList.push(
 			{
