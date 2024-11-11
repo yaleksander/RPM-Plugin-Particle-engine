@@ -22,6 +22,8 @@ void main()
 }`;
 
 const fragShader = `
+#include <fog_pars_fragment>
+
 uniform sampler2D diffuseTexture;
 
 varying float vAlpha;
@@ -34,6 +36,8 @@ void main()
 		discard;
 	tex.a = vAlpha;
 	gl_FragColor = tex;
+
+	#include <fog_fragment>
 }`;
 
 class Token
@@ -201,7 +205,14 @@ function tokenize(text)
 				if (num == '-')
 					expr.push({ token: Token.SUB, type: "op", value: null });
 				else
+				{
+					if (num[0] == '-' && expr[expr.length - 1].type == "val")
+					{
+						expr.push({ token: Token.SUB, type: "op", value: null });
+						num = num.slice(1);
+					}
 					expr.push({ token: Token.NUM, type: "val", value: parseFloat(num) });
+				}
 			}
 			else
 				return null;
@@ -257,7 +268,6 @@ function buildTree(expr)
 				return null;
 			nested.pop();
 			var node = buildTree(nested);
-			console.log(nested, node);
 			if (!node)
 				return null;
 			tree.push(node);
@@ -353,9 +363,9 @@ setInterval(function ()
 							dummy.position.set(evaluate(e.px, p.time, p.rand), evaluate(e.py, p.time, p.rand), evaluate(e.pz, p.time, p.rand));
 							dummy.position.multiplyScalar(RPM.Datas.Systems.SQUARE_SIZE);
 							dummy.scale.set(1, 1, 1).multiplyScalar(evaluate(e.size, p.time, p.rand));
+							dummy.rotation.y = (270 - RPM.Scene.Map.current.camera.horizontalAngle) * Math.PI / 180.0;
 							e.instanceAlpha[j] = evaluate(e.opacity, p.time, p.rand);
 							dummy.updateMatrix();
-							console.log(j, evaluate(e.py, p.time, p.rand), dummy.clone());
 							e.mesh.setMatrixAt(j, dummy.matrix);
 						}
 					}
@@ -383,39 +393,116 @@ RPM.Manager.Plugins.registerCommand(pluginName, "Start particle effect", (object
 	{
 		const tex = loader.load(texture, function (tex)
 		{
-			const maxParticles = rate * lifespan;
+			tex.minFilter = THREE.NearestFilter;
+			tex.magFilter = THREE.NearestFilter;
+			const maxParticles = rate * lifespan * 2;
 			const geo = new THREE.PlaneGeometry(tex.image.width, tex.image.height);
-			const mat = new THREE.ShaderMaterial({ vertexShader: vertShader, fragmentShader: fragShader, transparent: true, uniforms: { diffuseTexture: { value: tex } }});
-			//const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
+			const mat = new THREE.ShaderMaterial(
+			{
+				vertexShader: vertShader,
+				fragmentShader: fragShader,
+				blending: additiveBlending ? THREE.AdditiveBlending : THREE.NormalBlending,
+				transparent: true,
+				uniforms:
+				{
+					diffuseTexture: { value: tex }
+				}
+			});
 			const mesh = new THREE.InstancedMesh(geo, mat, maxParticles);
+			mesh.renderOrder = 1;
 			if (!result.object.mesh)
 			{
 				result.object.mesh = new THREE.Mesh();
 				RPM.Scene.Map.current.scene.add(result.object.mesh);
 			}
 			result.object.mesh.add(mesh);
-			console.log(mesh);
 			position = position.split(";");
-			emitterList.push(
+			const exprPx = tokenize(position[0]);
+			const exprPy = tokenize(position[1]);
+			const exprPz = tokenize(position[2]);
+			const exprSize = tokenize(size);
+			const exprAlpha = tokenize(opacity);
+			var errorPx = false;
+			var errorPy = false;
+			var errorPz = false;
+			var errorSize = false;
+			var errorAlpha = false;
+			try
 			{
-				id: object,
-				emissionTime: 0,
-				nextEmission: 0,
-				maxParticles: maxParticles,
-				map: RPM.Scene.Map.current,
-				instanceAlpha: new Float32Array(maxParticles),
-				mesh: mesh,
-				particles: [],
-				blending: additiveBlending ? THREE.AdditiveBlending : THREE.NormalBlending,
-				rate: rate,
-				lifespan: lifespan,
-				px: tokenize(position[0]),
-				py: tokenize(position[1]),
-				pz: tokenize(position[2]),
-				size: tokenize(size),
-				opacity: tokenize(opacity)
-			});
-			console.log(emitterList[emitterList.length - 1]);
+				evaluate(exprPx, 0, 0);
+			}
+			catch (e)
+			{
+				errorPx = true;
+			}
+			try
+			{
+				evaluate(exprPy, 0, 0);
+			}
+			catch (e)
+			{
+				errorPy = true;
+			}
+			try
+			{
+				evaluate(exprPz, 0, 0);
+			}
+			catch (e)
+			{
+				errorPz = true;
+			}
+			try
+			{
+				evaluate(exprSize, 0, 0);
+			}
+			catch (e)
+			{
+				errorSize = true;
+			}
+			try
+			{
+				evaluate(exprAlpha, 0, 0);
+			}
+			catch (e)
+			{
+				errorAlpha = true;
+			}
+			if (errorPx || errorPy || errorPz || errorSize || errorAlpha)
+			{
+				var msg = "The program found one or more errors in the following formulas:";
+				if (errorPx)
+					msg += "\nposition (x): " + position[0];
+				if (errorPy)
+					msg += "\nposition (y): " + position[1];
+				if (errorPz)
+					msg += "\nposition (z): " + position[2];
+				if (errorSize)
+					msg += "\nsize: " + size;
+				if (errorAlpha)
+					msg += "\nopacity: " + opacity;
+				alert(msg);
+			}
+			else
+			{
+				emitterList.push(
+				{
+					id: object,
+					emissionTime: 0,
+					nextEmission: 0,
+					maxParticles: maxParticles,
+					map: RPM.Scene.Map.current,
+					instanceAlpha: new Float32Array(maxParticles),
+					mesh: mesh,
+					particles: [],
+					rate: rate,
+					lifespan: lifespan,
+					px: exprPx,
+					py: exprPy,
+					pz: exprPz,
+					size: exprSize,
+					opacity: exprAlpha
+				});
+			}
 		});
 	}, RPM.Core.ReactionInterpreter.currentObject);
 });
