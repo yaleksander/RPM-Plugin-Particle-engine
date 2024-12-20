@@ -354,7 +354,8 @@ setInterval(function ()
 				if (e.rate > 0 && e.emissionTime > e.nextEmission)
 				{
 					e.nextEmission = e.emissionTime + (1 + Math.random()) / (2 * e.rate);
-					e.particles.push({ time: 0, rand: Math.random(), rand2: Math.random() });
+					console.log(e.origin.position);
+					e.particles.push({ time: 0, rand: Math.random(), rand2: Math.random(), origin: e.origin.position.clone() });
 				}
 				for (var j = 0; j < e.maxParticles; j++)
 				{
@@ -366,8 +367,7 @@ setInterval(function ()
 						else
 						{
 							p.time += delta;
-							dummy.position.set(evaluate(e.px, p.time, p.rand, p.rand2), evaluate(e.py, p.time, p.rand, p.rand2), evaluate(e.pz, p.time, p.rand, p.rand2));
-							dummy.position.multiplyScalar(RPM.Datas.Systems.SQUARE_SIZE);
+							dummy.position.set(evaluate(e.px, p.time, p.rand, p.rand2) * RPM.Datas.Systems.SQUARE_SIZE + p.origin.x, evaluate(e.py, p.time, p.rand, p.rand2) * RPM.Datas.Systems.SQUARE_SIZE  + p.origin.y, evaluate(e.pz, p.time, p.rand, p.rand2) * RPM.Datas.Systems.SQUARE_SIZE  + p.origin.z);
 							dummy.scale.set(1, 1, 1).multiplyScalar(evaluate(e.size, p.time, p.rand, p.rand2));
 							dummy.rotation.y = (270 - RPM.Scene.Map.current.camera.horizontalAngle) * Math.PI / 180.0;
 							e.instanceAlpha[j] = evaluate(e.opacity, p.time, p.rand, p.rand2);
@@ -420,12 +420,7 @@ RPM.Manager.Plugins.registerCommand(pluginName, "Start particle effect", (object
 			});
 			const mesh = new THREE.InstancedMesh(geo, mat, maxParticles);
 			mesh.renderOrder = 1;
-			if (!result.object.mesh)
-			{
-				result.object.mesh = new THREE.Mesh();
-				RPM.Scene.Map.current.scene.add(result.object.mesh);
-			}
-			result.object.mesh.add(mesh);
+			RPM.Scene.Map.current.scene.add(mesh);
 			position = position.split(";");
 			const exprPx = tokenize(position[0]);
 			const exprPy = tokenize(position[1]);
@@ -497,6 +492,7 @@ RPM.Manager.Plugins.registerCommand(pluginName, "Start particle effect", (object
 				emitterList.push(
 				{
 					id: object,
+					origin: result.object,
 					emissionTime: 0,
 					nextEmission: 0,
 					maxParticles: maxParticles,
@@ -531,7 +527,7 @@ RPM.Manager.Plugins.registerCommand(pluginName, "End particle effect", (object, 
 			e.rate = 0;
 			setTimeout(function ()
 			{
-				e.mesh.parent.remove(e.mesh);
+				RPM.Scene.Map.current.scene.remove(e.mesh);
 			}, smooth ? e.lifespan * 1000 : 1);
 			break;
 		}
