@@ -61,6 +61,11 @@ class Token
 	static POW   = 16;
 	static ROUND = 17;
 	static RAND2 = 18;
+	static SQR   = 19;
+	static MIN   = 20;
+	static MAX   = 21;
+	static COMMA = 22;
+	static VAR   = 23;
 }
 
 function tokenize(text)
@@ -95,6 +100,8 @@ function tokenize(text)
 			expr.push({ token: Token.OPEN, type: null, value: null });
 		else if (text[i] == ')')
 			expr.push({ token: Token.CLOSE, type: null, value: null });
+		else if (text[i] == ',')
+			expr.push({ token: Token.COMMA, type: "op", value: null });
 		else if (text[i] == 'l')
 		{
 			if (text[++i] == 'n')
@@ -111,7 +118,7 @@ function tokenize(text)
 				else
 					return null;
 			}
-			else if (text[++i] == 'q')
+			else if (text[i] == 'q')
 			{
 				if (text[++i] == 'r')
 				{
@@ -121,7 +128,10 @@ function tokenize(text)
 						return null;
 				}
 				else
-					return null;
+				{
+					expr.push({ token: Token.SQR, type: "val", value: null });
+					i--;
+				}
 			}
 			else
 				return null;
@@ -193,6 +203,37 @@ function tokenize(text)
 				expr.push({ token: Token.RAND, type: "val", value: null });
 				i--;
 			}
+		}
+		else if (text[i] == 'm')
+		{
+			if (text[++i] == 'i')
+			{
+				if (text[++i] == 'n')
+					expr.push({ token: Token.MIN, type: "func", value: null });
+				else
+					return null;
+			}
+			else if (text[i] == 'a')
+			{
+				if (text[++i] == 'x')
+					expr.push({ token: Token.MAX, type: "func", value: null });
+				else
+					return null;
+			}
+			else
+				return null;
+		}
+		else if (text[i] == 'v')
+		{
+			if (text[++i] == 'a')
+			{
+				if (text[++i] == 'r')
+					expr.push({ token: Token.VAR, type: "func", value: null });
+				else
+					return null;
+			}
+			else
+				return null;
 		}
 		else
 		{
@@ -312,6 +353,14 @@ function buildTree(expr)
 			tree[i].right = tree.splice(i + 1, 1)[0];
 		}
 	}
+	for (var i = 0; i < tree.length; i++)
+	{
+		if (tree[i].token === Token.COMMA)
+		{
+			tree[i].left = tree.splice(--i, 1)[0];
+			tree[i].right = tree.splice(i + 1, 1)[0];
+		}
+	}
 	return tree[0];
 }
 
@@ -319,24 +368,35 @@ function evaluate(expr, t, r, r2)
 {
 	switch (expr.token)
 	{
-		case Token.ADD:   return evaluate(expr.left, t, r, r2) + evaluate(expr.right, t, r, r2);
-		case Token.SUB:   return evaluate(expr.left, t, r, r2) - evaluate(expr.right, t, r, r2);
-		case Token.MULT:  return evaluate(expr.left, t, r, r2) * evaluate(expr.right, t, r, r2);
-		case Token.DIV:   return evaluate(expr.left, t, r, r2) / evaluate(expr.right, t, r, r2);
-		case Token.MOD:   return evaluate(expr.left, t, r, r2) % evaluate(expr.right, t, r, r2);
-		case Token.POW:   return Math.pow(evaluate(expr.left, t, r, r2), evaluate(expr.right, t, r, r2));
-		case Token.SQRT:  return Math.sqrt(evaluate(expr.left, t, r, r2));
-		case Token.LN:    return Math.log(evaluate(expr.left, t, r, r2));
-		case Token.SIN:   return Math.sin(evaluate(expr.left, t, r, r2));
-		case Token.COS:   return Math.cos(evaluate(expr.left, t, r, r2));
-		case Token.TAN:   return Math.tan(evaluate(expr.left, t, r, r2));
-		case Token.ABS:   return Math.abs(evaluate(expr.left, t, r, r2));
-		case Token.ROUND: return Math.round(evaluate(expr.left, t, r, r2));
 		case Token.TIME:  return t;
 		case Token.RAND:  return r;
 		case Token.RAND2: return r2;
+		case Token.SQR:   return RPM.Datas.Systems.SQUARE_SIZE;
 		case Token.NUM:   return expr.value;
-		default:		  return null;
+		default:          break;
+	}
+	const left = evaluate(expr.left, t, r, r2);
+	if (Array.isArray(left) && expr.token !== Token.MIN && expr.token !== Token.MAX)
+		return null;
+	switch (expr.token)
+	{
+		case Token.ADD:   return left + evaluate(expr.right, t, r, r2);
+		case Token.SUB:   return left - evaluate(expr.right, t, r, r2);
+		case Token.MULT:  return left * evaluate(expr.right, t, r, r2);
+		case Token.DIV:   return left / evaluate(expr.right, t, r, r2);
+		case Token.MOD:   return left % evaluate(expr.right, t, r, r2);
+		case Token.POW:   return Math.pow(left, evaluate(expr.right, t, r, r2));
+		case Token.SQRT:  return Math.sqrt(left);
+		case Token.LN:    return Math.log(left);
+		case Token.SIN:   return Math.sin(left);
+		case Token.COS:   return Math.cos(left);
+		case Token.TAN:   return Math.tan(left);
+		case Token.ABS:   return Math.abs(left);
+		case Token.ROUND: return Math.round(left);
+		case Token.VAR:   return RPM.Core.Game.current.variables[Math.round(left)];
+		case Token.MIN:   return Math.min(...left);
+		case Token.MAX:   return Math.max(...left);
+		case Token.COMMA: return [left].concat([evaluate(expr.right, t, r, r2)]);
 	}
 }
 
@@ -367,7 +427,7 @@ setInterval(function ()
 						else
 						{
 							p.time += delta;
-							dummy.position.set(evaluate(e.px, p.time, p.rand, p.rand2) * RPM.Datas.Systems.SQUARE_SIZE + p.origin.x, evaluate(e.py, p.time, p.rand, p.rand2) * RPM.Datas.Systems.SQUARE_SIZE  + p.origin.y, evaluate(e.pz, p.time, p.rand, p.rand2) * RPM.Datas.Systems.SQUARE_SIZE  + p.origin.z);
+							dummy.position.set(evaluate(e.px, p.time, p.rand, p.rand2) + p.origin.x, evaluate(e.py, p.time, p.rand, p.rand2)  + p.origin.y, evaluate(e.pz, p.time, p.rand, p.rand2)  + p.origin.z);
 							dummy.scale.set(1, 1, 1).multiplyScalar(evaluate(e.size, p.time, p.rand, p.rand2));
 							dummy.rotation.y = (270 - RPM.Scene.Map.current.camera.horizontalAngle) * Math.PI / 180.0;
 							e.instanceAlpha[j] = evaluate(e.opacity, p.time, p.rand, p.rand2);
