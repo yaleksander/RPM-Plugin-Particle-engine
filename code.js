@@ -414,7 +414,6 @@ setInterval(function ()
 				if (e.rate > 0 && e.emissionTime > e.nextEmission)
 				{
 					e.nextEmission = e.emissionTime + (1 + Math.random()) / (2 * e.rate);
-					console.log(e.origin.position);
 					e.particles.push({ time: 0, rand: Math.random(), rand2: Math.random(), origin: e.origin.position.clone() });
 				}
 				for (var j = 0; j < e.maxParticles; j++)
@@ -453,8 +452,30 @@ setInterval(function ()
 	}
 }, 16);
 
+function endParticles(object, smooth)
+{
+	if (object == -1)
+		object = RPM.Core.ReactionInterpreter.currentObject.id;
+	else if (object == 0)
+		object = RPM.Core.Game.current.hero.id;
+	for (var i = 0; i < emitterList.length; i++)
+	{
+		const e = emitterList[i];
+		if (e.id === object)
+		{
+			e.rate = 0;
+			setTimeout(function ()
+			{
+				RPM.Scene.Map.current.scene.remove(e.mesh);
+			}, smooth ? e.lifespan * 1000 : 1);
+			break;
+		}
+	}
+}
+
 RPM.Manager.Plugins.registerCommand(pluginName, "Start particle effect", (object, rate, lifespan, position, size, opacity, texture, additiveBlending) =>
 {
+	endParticles(object, false);
 	if (object == -1)
 		object = RPM.Core.ReactionInterpreter.currentObject.id;
 	else if (object == 0)
@@ -575,21 +596,5 @@ RPM.Manager.Plugins.registerCommand(pluginName, "Start particle effect", (object
 
 RPM.Manager.Plugins.registerCommand(pluginName, "End particle effect", (object, smooth) =>
 {
-	if (object == -1)
-		object = RPM.Core.ReactionInterpreter.currentObject.id;
-	else if (object == 0)
-		object = RPM.Core.Game.current.hero.id;
-	for (var i = 0; i < emitterList.length; i++)
-	{
-		const e = emitterList[i];
-		if (e.id === object)
-		{
-			e.rate = 0;
-			setTimeout(function ()
-			{
-				RPM.Scene.Map.current.scene.remove(e.mesh);
-			}, smooth ? e.lifespan * 1000 : 1);
-			break;
-		}
-	}
+	endParticles(object, smooth);
 });
