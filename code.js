@@ -66,6 +66,10 @@ class Token
 	static MAX   = 21;
 	static COMMA = 22;
 	static VAR   = 23;
+	static RAND3 = 24;
+	static RAND4 = 25;
+	static RAND5 = 26;
+	static RAND6 = 27;
 }
 
 function tokenize(text)
@@ -197,6 +201,22 @@ function tokenize(text)
 			else if (text[i] == '2')
 			{
 				expr.push({ token: Token.RAND2, type: "val", value: null });
+			}
+			else if (text[i] == '3')
+			{
+				expr.push({ token: Token.RAND3, type: "val", value: null });
+			}
+			else if (text[i] == '4')
+			{
+				expr.push({ token: Token.RAND4, type: "val", value: null });
+			}
+			else if (text[i] == '5')
+			{
+				expr.push({ token: Token.RAND5, type: "val", value: null });
+			}
+			else if (text[i] == '6')
+			{
+				expr.push({ token: Token.RAND6, type: "val", value: null });
 			}
 			else
 			{
@@ -364,28 +384,32 @@ function buildTree(expr)
 	return tree[0];
 }
 
-function evaluate(expr, t, r, r2)
+function evaluate(expr, t, r)
 {
 	switch (expr.token)
 	{
 		case Token.TIME:  return t;
-		case Token.RAND:  return r;
-		case Token.RAND2: return r2;
+		case Token.RAND:  return r[0];
+		case Token.RAND2: return r[1];
+		case Token.RAND3: return r[2];
+		case Token.RAND4: return r[3];
+		case Token.RAND5: return r[4];
+		case Token.RAND6: return r[5];
 		case Token.SQR:   return RPM.Datas.Systems.SQUARE_SIZE;
 		case Token.NUM:   return expr.value;
 		default:          break;
 	}
-	const left = evaluate(expr.left, t, r, r2);
+	const left = evaluate(expr.left, t, r);
 	if (Array.isArray(left) && expr.token !== Token.MIN && expr.token !== Token.MAX)
 		return null;
 	switch (expr.token)
 	{
-		case Token.ADD:   return left + evaluate(expr.right, t, r, r2);
-		case Token.SUB:   return left - evaluate(expr.right, t, r, r2);
-		case Token.MULT:  return left * evaluate(expr.right, t, r, r2);
-		case Token.DIV:   return left / evaluate(expr.right, t, r, r2);
-		case Token.MOD:   return left % evaluate(expr.right, t, r, r2);
-		case Token.POW:   return Math.pow(left, evaluate(expr.right, t, r, r2));
+		case Token.ADD:   return left + evaluate(expr.right, t, r);
+		case Token.SUB:   return left - evaluate(expr.right, t, r);
+		case Token.MULT:  return left * evaluate(expr.right, t, r);
+		case Token.DIV:   return left / evaluate(expr.right, t, r);
+		case Token.MOD:   return left % evaluate(expr.right, t, r);
+		case Token.POW:   return Math.pow(left, evaluate(expr.right, t, r));
 		case Token.SQRT:  return Math.sqrt(left);
 		case Token.LN:    return Math.log(left);
 		case Token.SIN:   return Math.sin(left);
@@ -396,7 +420,7 @@ function evaluate(expr, t, r, r2)
 		case Token.VAR:   return RPM.Core.Game.current.variables[Math.round(left)];
 		case Token.MIN:   return Math.min(...left);
 		case Token.MAX:   return Math.max(...left);
-		case Token.COMMA: return [left].concat([evaluate(expr.right, t, r, r2)]);
+		case Token.COMMA: return [left].concat([evaluate(expr.right, t, r)]);
 	}
 }
 
@@ -414,7 +438,7 @@ setInterval(function ()
 				if (e.rate > 0 && e.emissionTime > e.nextEmission)
 				{
 					e.nextEmission = e.emissionTime + (1 + Math.random()) / (2 * e.rate);
-					e.particles.push({ time: 0, rand: Math.random(), rand2: Math.random(), origin: e.origin.position.clone() });
+					e.particles.push({ time: 0, rand: [Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random()], origin: e.origin.position.clone() });
 				}
 				for (var j = 0; j < e.maxParticles; j++)
 				{
@@ -426,10 +450,11 @@ setInterval(function ()
 						else
 						{
 							p.time += delta;
-							dummy.position.set(evaluate(e.px, p.time, p.rand, p.rand2) + p.origin.x, evaluate(e.py, p.time, p.rand, p.rand2)  + p.origin.y, evaluate(e.pz, p.time, p.rand, p.rand2)  + p.origin.z);
-							dummy.scale.set(1, 1, 1).multiplyScalar(evaluate(e.size, p.time, p.rand, p.rand2));
-							dummy.rotation.y = (270 - RPM.Scene.Map.current.camera.horizontalAngle) * Math.PI / 180.0;
-							e.instanceAlpha[j] = evaluate(e.opacity, p.time, p.rand, p.rand2);
+							dummy.position.set(evaluate(e.px, p.time, p.rand) + p.origin.x, evaluate(e.py, p.time, p.rand)  + p.origin.y, evaluate(e.pz, p.time, p.rand)  + p.origin.z);
+							dummy.scale.set(1, 1, 1).multiplyScalar(evaluate(e.size, p.time, p.rand));
+							dummy.lookAt(RPM.Scene.Map.current.camera.getThreeCamera().position);
+							dummy.rotation.z = evaluate(e.rot, p.time, p.rand) * Math.PI / 180.0;
+							e.instanceAlpha[j] = evaluate(e.opacity, p.time, p.rand);
 							dummy.updateMatrix();
 							e.mesh.setMatrixAt(j, dummy.matrix);
 						}
@@ -473,7 +498,7 @@ function endParticles(object, smooth)
 	}
 }
 
-RPM.Manager.Plugins.registerCommand(pluginName, "Start particle effect", (object, rate, lifespan, position, size, opacity, texture, additiveBlending) =>
+RPM.Manager.Plugins.registerCommand(pluginName, "Start particle effect", (object, rate, lifespan, position, rotation, size, opacity, texture, additiveBlending) =>
 {
 	endParticles(object, false);
 	if (object == -1)
@@ -506,16 +531,18 @@ RPM.Manager.Plugins.registerCommand(pluginName, "Start particle effect", (object
 			const exprPx = tokenize(position[0]);
 			const exprPy = tokenize(position[1]);
 			const exprPz = tokenize(position[2]);
+			const exprRot = tokenize(rotation);
 			const exprSize = tokenize(size);
 			const exprAlpha = tokenize(opacity);
 			var errorPx = false;
 			var errorPy = false;
 			var errorPz = false;
+			var errorRot = false;
 			var errorSize = false;
 			var errorAlpha = false;
 			try
 			{
-				evaluate(exprPx, 0, 0, 0);
+				evaluate(exprPx, 0, [0, 0, 0, 0, 0, 0]);
 			}
 			catch (e)
 			{
@@ -523,7 +550,7 @@ RPM.Manager.Plugins.registerCommand(pluginName, "Start particle effect", (object
 			}
 			try
 			{
-				evaluate(exprPy, 0, 0, 0);
+				evaluate(exprPy, 0, [0, 0, 0, 0, 0, 0]);
 			}
 			catch (e)
 			{
@@ -531,7 +558,7 @@ RPM.Manager.Plugins.registerCommand(pluginName, "Start particle effect", (object
 			}
 			try
 			{
-				evaluate(exprPz, 0, 0, 0);
+				evaluate(exprPz, 0, [0, 0, 0, 0, 0, 0]);
 			}
 			catch (e)
 			{
@@ -539,7 +566,15 @@ RPM.Manager.Plugins.registerCommand(pluginName, "Start particle effect", (object
 			}
 			try
 			{
-				evaluate(exprSize, 0, 0, 0);
+				evaluate(exprRot, 0, [0, 0, 0, 0, 0, 0]);
+			}
+			catch (e)
+			{
+				errorRot = true;
+			}
+			try
+			{
+				evaluate(exprSize, 0, [0, 0, 0, 0, 0, 0]);
 			}
 			catch (e)
 			{
@@ -547,13 +582,13 @@ RPM.Manager.Plugins.registerCommand(pluginName, "Start particle effect", (object
 			}
 			try
 			{
-				evaluate(exprAlpha, 0, 0, 0);
+				evaluate(exprAlpha, 0, [0, 0, 0, 0, 0, 0]);
 			}
 			catch (e)
 			{
 				errorAlpha = true;
 			}
-			if (errorPx || errorPy || errorPz || errorSize || errorAlpha)
+			if (errorPx || errorPy || errorPz || errorRot || errorSize || errorAlpha)
 			{
 				var msg = "The program found one or more errors in the following formulas:";
 				if (errorPx)
@@ -562,6 +597,8 @@ RPM.Manager.Plugins.registerCommand(pluginName, "Start particle effect", (object
 					msg += "\nposition (y): " + position[1];
 				if (errorPz)
 					msg += "\nposition (z): " + position[2];
+				if (errorRot)
+					msg += "\nrotation (x): " + rotation;
 				if (errorSize)
 					msg += "\nsize: " + size;
 				if (errorAlpha)
@@ -586,6 +623,7 @@ RPM.Manager.Plugins.registerCommand(pluginName, "Start particle effect", (object
 					px: exprPx,
 					py: exprPy,
 					pz: exprPz,
+					rot: exprRot,
 					size: exprSize,
 					opacity: exprAlpha
 				});
