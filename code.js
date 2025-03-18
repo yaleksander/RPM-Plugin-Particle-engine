@@ -453,7 +453,7 @@ setInterval(function ()
 							dummy.position.set(evaluate(e.px, p.time, p.rand) + p.origin.x, evaluate(e.py, p.time, p.rand)  + p.origin.y, evaluate(e.pz, p.time, p.rand)  + p.origin.z);
 							dummy.scale.set(1, 1, 1).multiplyScalar(evaluate(e.size, p.time, p.rand));
 							dummy.lookAt(RPM.Scene.Map.current.camera.getThreeCamera().position);
-							dummy.rotation.z = evaluate(e.rot, p.time, p.rand) * Math.PI / 180.0;
+							dummy.rotation.z += evaluate(e.rot, p.time, p.rand) * Math.PI / 180.0;
 							e.instanceAlpha[j] = evaluate(e.opacity, p.time, p.rand);
 							dummy.updateMatrix();
 							e.mesh.setMatrixAt(j, dummy.matrix);
@@ -598,7 +598,7 @@ RPM.Manager.Plugins.registerCommand(pluginName, "Start particle effect", (object
 				if (errorPz)
 					msg += "\nposition (z): " + position[2];
 				if (errorRot)
-					msg += "\nrotation (x): " + rotation;
+					msg += "\nrotation: " + rotation;
 				if (errorSize)
 					msg += "\nsize: " + size;
 				if (errorAlpha)
