@@ -432,7 +432,8 @@ setInterval(function ()
 		for (var i = 0; i < emitterList.length; i++)
 		{
 			const e = emitterList[i];
-			if (e.map === RPM.Scene.Map.current && !!e.mesh.parent)
+			e.mesh.visible = e.origin.isInScene;
+			if (e.map === RPM.Scene.Map.current && !e.origin.removed)
 			{
 				e.emissionTime += delta;
 				if (e.rate > 0 && e.emissionTime > e.nextEmission)
